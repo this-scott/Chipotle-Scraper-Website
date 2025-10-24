@@ -1,6 +1,5 @@
 import json
 import requests
-import os
 
 #loading environment variables from .env file
 def load_env_var(var_name, default=None):
@@ -14,7 +13,7 @@ def load_env_var(var_name, default=None):
         pass
     return default
 
-#API_KEY = load_env_var("google_api")  # Read API key from .env file
+API_KEY = load_env_var("google_api")  # Read API key from .env file
 
 def get_lat_long_google(address, city, state, api_key):
     base_url = "https://maps.googleapis.com/maps/api/geocode/json"
