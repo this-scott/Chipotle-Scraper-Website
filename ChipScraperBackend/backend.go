@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
+
+	"github.com/joho/godotenv"
 )
 
 type idLocation struct {
@@ -16,30 +19,30 @@ type idLocation struct {
 	Long float64 `json:"longitude"`
 }
 
-type idMenu struct {
-	Id   int            `json:"id"`
-	Menu map[string]int `json:"menu`
-}
+// type idMenu struct {
+// 	Id   int            `json:"id"`
+// 	Menu map[string]int `json:"menu`
+// }
 
 // Combined struct that has to be main
-type LocationWithMenu struct {
-	Menu map[string]idMenu `json:"menu"`
-	Id   int               `json:"id"`
-	Lat  float64           `json:"latitude"`
-	Long float64           `json:"longitude"`
+type Chipotle struct {
+	Id   int            `json:"id"`
+	Menu map[string]int `json:"menu"`
+	Lat  float64        `json:"latitude"`
+	Long float64        `json:"longitude"`
 }
 
 // package level variables
-// var latList []idLocation
-// var longlist []idLocation
-// var menuMap map[string]idMenu
+// var LATS []idLocation
+// var longs []idLocation
+// var menus []map[string]int
 
 //DATA HANDLING
 
 // return -> nested array with lat and long sorted array, id map
-func buildArrays(path string) ([]idLocation, []idLocation, map[int]idMenu, error) {
+func buildArrays(path string) ([]idLocation, []idLocation, []Chipotle, error) {
 	//initialize list of locations
-	file, err := os.Open("updated_output.json")
+	file, err := os.Open(path)
 	if err != nil {
 		fmt.Println("Error on file open")
 		return nil, nil, nil, err
@@ -50,128 +53,135 @@ func buildArrays(path string) ([]idLocation, []idLocation, map[int]idMenu, error
 	reader := bufio.NewReader(file)
 	decoder := json.NewDecoder(reader)
 
-	// Read the JSON data into a slice of Location
-	var lats []idLocation
-	var menus map[int]idMenu
+	// Read the JSON data into a slice of stores
+	var chipotles []Chipotle
 
 	// I don't like this but it works
-	if err := decoder.Decode(&lats); err != nil {
+	if err := decoder.Decode(&chipotles); err != nil {
 		fmt.Println("Error on lats")
 		return nil, nil, nil, err
 	}
-	if err := decoder.Decode(&menus); err != nil {
-		fmt.Println("Error on menus")
-		return nil, nil, nil, err
+
+	//test fill
+	// fmt.Println("First item: ", chipotles[0])
+
+	//DO NOT FORGET ITDS START ON 1
+
+	//TODO: Decode into new arrays
+	//lats is copy of chips with idlocation
+	var lats []idLocation
+	for _, b := range chipotles {
+		lats = append(lats, idLocation{
+			//MOVING ID TO 0 INDEXING. BE CAREFUL WITH THIS
+			Id:   b.Id - 1,
+			Lat:  b.Lat,
+			Long: b.Long,
+		})
 	}
 
-	//sort to get lats
 	sort.Slice(lats, func(i, j int) bool {
 		return lats[i].Lat < lats[j].Lat
 	})
 
+	//long is resorted copy of lats
 	longs := make([]idLocation, len(lats))
-	copy(longs, lats) // Sort by latitude (ascending)
+	copy(longs, lats)
 
 	sort.Slice(longs, func(i, j int) bool {
 		return longs[i].Long < longs[j].Long
 	})
-	return lats, longs, menus, nil
+
+	// //building menu arrays
+	// var menus []map[string]int
+	// for _, chip := range chipotles {
+	// 	menus = append(menus, chip.Menu)
+	// }
+	return lats, longs, chipotles, nil
 }
 
-// parse
-func getNearby(threshhold float64, lat float64, long float64, latList []idLocation, longList []idLocation, menuMap map[int]idMenu) ([]idLocation, error) {
+func getNearby(threshold float64, lat float64, long float64, latList []idLocation, longList []idLocation, chipotles []Chipotle) ([]Chipotle, error) {
 	// start := time.Now()
-	fmt.Println(menuMap)
 
 	//search for upper and lower boundary of value + threshold
 	//value: array to search, array: array of idlocations(sorted by lat or long), searchLong: whether to search long(0) or lat(1)
-	boundarySearch := func(value float64, array []idLocation, searchField bool) []idLocation {
-		//this trick is so funny
+	boundarySearch := func(value float64, array []idLocation, searchLat bool) []idLocation {
+		if len(array) == 0 {
+			fmt.Println("Empty array")
+			return []idLocation{}
+		}
 		//find upper boundary
-
-		fmt.Println(array)
-		if searchField {
-			tgt := value + threshhold
+		if searchLat {
+			tgt := value + threshold
 			lowi, upi := 0, len(array)-1
 
+			// Find upper bound (last index <= tgt)
 			for lowi <= upi {
 				mid := lowi + (upi-lowi)/2
 				if array[mid].Lat <= tgt {
-					lowi = mid + 1 // Search in the right half
+					lowi = mid + 1
 				} else {
-					upi = mid - 1 // Search in the left half
+					upi = mid - 1
 				}
 			}
+			upperBound := upi // inclusive
 
-			upperBound := upi
-
-			//find lower boundary
-			tgt = value - threshhold
+			// Find lower bound (first index >= value - threshold)
+			tgt = value - threshold
 			lowi, upi = 0, len(array)-1
 			for lowi <= upi {
 				mid := lowi + (upi-lowi)/2
 				if array[mid].Lat < tgt {
-					lowi = mid + 1 // Search in the right half
+					lowi = mid + 1
 				} else {
-					upi = mid - 1 // Search in the left half
+					upi = mid - 1
 				}
 			}
-
 			lowerBound := lowi
 
+			// Slice range: inclusive bounds
 			return array[lowerBound : upperBound+1]
 		} else {
-			tgt := value + threshhold
+			tgt := value + threshold
 			lowi, upi := 0, len(array)-1
 
+			// Find upper bound (last index <= tgt)
 			for lowi <= upi {
 				mid := lowi + (upi-lowi)/2
 				if array[mid].Long <= tgt {
-					lowi = mid + 1 // Search in the right half
+					lowi = mid + 1
 				} else {
-					upi = mid - 1 // Search in the left half
+					upi = mid - 1
 				}
 			}
+			upperBound := upi // inclusive
 
-			upperBound := upi
-
-			//find lower boundary
-			tgt = value - threshhold
+			// Find lower bound (first index >= value - threshold)
+			tgt = value - threshold
 			lowi, upi = 0, len(array)-1
 			for lowi <= upi {
 				mid := lowi + (upi-lowi)/2
 				if array[mid].Long < tgt {
-					lowi = mid + 1 // Search in the right half
+					lowi = mid + 1
 				} else {
-					upi = mid - 1 // Search in the left half
+					upi = mid - 1
 				}
 			}
-
 			lowerBound := lowi
+			// fmt.Println("Lower Bound: ", lowerBound, "Upper Bound: ", upperBound)
+			// fmt.Println("Bounds: ", array[lowerBound:upperBound+1])
 			return array[lowerBound : upperBound+1]
 		}
 	}
 	//CANNOT RETURN THE IDLOCATION WITHOUT STRUCTURING IT AS JSON.
 	//THERE IS DEF A HEURISTIC FOR THIS BY STARTING FROM THE ORIGIN OF THE WORLD AND SORTING FROM THERE BUT THAT'S FOR A LEETCODE PROBLEM NOT A PERSONAL PROJECT
 	//USING RTREE DATA STRUCTURE... PLAN B IS TO USE 2 BINARY SEARCHES AND FIND WHAT IS IN RANGE
-	//I LIED, DOUBLE B SEARCH
 
 	//TODO: LOCATION IDS:
 	// double b search returning array of ids
+	latRange := boundarySearch(lat, latList, true)
+	longRange := boundarySearch(long, longList, false)
 
-	//TODO: GET MENUS FROM IDS:
-
-	// nearby := []idLocation{}
-	// for _, store := range compArray {
-	// 	if math.Sqrt(math.Abs(store.Lat-lat)+math.Abs(store.Long-long)) < threshhold {
-	// 		nearby = append(nearby, store)
-	// 	}
-	// }
-	// elapsed := time.Since((start))
-	// fmt.Println("lat: " + strconv.FormatFloat(lat, 'f', -1, 64) + " long: " + strconv.FormatFloat(long, 'f', -1, 64) + " " + elapsed.String())
-
-	latRange := boundarySearch(lat, latList, false)
-	longRange := boundarySearch(long, longList, true)
+	// fmt.Println("latrange", latRange)
 	//Intersection these
 	m := make(map[int]idLocation)
 	for _, v := range latRange {
@@ -186,19 +196,19 @@ func getNearby(threshhold float64, lat float64, long float64, latList []idLocati
 	}
 
 	//return menus of all these from the indexes
-	sending := []idMenu{}
+	sending := []Chipotle{}
 	for _, item := range common {
-		sending = append(sending, menuMap[item.Id])
+		sending = append(sending, chipotles[item.Id])
 	}
-
-	return common, nil
+	fmt.Println(sending)
+	return sending, nil
 }
 
 //WEB CODE
 
 // wrapping this in a closure for scope purposes?
 // coming back to this 4 months after I wrote it. Did I need to wrap this in a seperate function?
-func sendResponse(lats []idLocation, longs []idLocation, menuMap map[int]idMenu) http.HandlerFunc {
+func sendResponse(lats []idLocation, longs []idLocation, chips []Chipotle) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		//testing http headers
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -209,20 +219,26 @@ func sendResponse(lats []idLocation, longs []idLocation, menuMap map[int]idMenu)
 
 		lat, err1 := strconv.ParseFloat(param1, 64)
 		long, err2 := strconv.ParseFloat(param2, 64)
-
+		fmt.Println("lat", lat, "long", long)
 		//handling conversion errors
 		if err1 != nil || err2 != nil {
-			fmt.Println(param1 + " " + param2)
+			fmt.Println("params", param1+" "+param2)
 			http.Error(w, "Invalid float values", http.StatusBadRequest)
 			return
 		}
 
 		//
-		resp, err := getNearby(1, lat, long, lats, longs, menuMap)
+		resp, err := getNearby(1, lat, long, lats, longs, chips)
 		if err != nil {
 			fmt.Println("RAHHHH GETNEARBY ERROR")
 		}
-		fmt.Fprint(w, resp)
+
+		//convert to json
+		bytes, err := json.Marshal(resp)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Fprint(w, string(bytes))
 	}
 
 }
@@ -257,14 +273,20 @@ func main() {
 	// 	MaxAge: 86400, // 24 hours
 	// })
 
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 	//NEW INTERPRETATIONS: MENUS ARE STORED IN A MAP SORTED BY ID, LOCATIONS ARE STORED IN 2 SORTED ARRAYS
-	lats, longs, menuMap, err := buildArrays(os.Getenv("json_path"))
-
+	path := os.Getenv("json_path")
+	lats, longs, menuMap, err := buildArrays(path)
+	// fmt.Println("lats", lats)
 	if err != nil {
 		fmt.Println("Error building arrays:", err)
 	}
+
 	//fmt.Println(locations[5])
-	// getNearby(.4, 40.4387, -79.9972, locations)
+	// getNearby(.4, 40.4387, -79.9972, menuMap)
 	//handle requests for locations
 	mux := http.NewServeMux()
 	mux.HandleFunc("/givechipotles", sendResponse(lats, longs, menuMap))

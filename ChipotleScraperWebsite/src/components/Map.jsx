@@ -6,11 +6,12 @@ export default function Map() {
     const mapRef = useRef();
     const positionMarkerRefs = useRef({})
 
-    const [positionArray, setPositionArray] = useState([]);
+    const [data, setData] = useState([]);
+
+    const decoder = new TextDecoder('utf-8');
 
     //This says the map exists even if it isn't rendered yet
     useEffect(() => {
-        //I hate this function syntax
         const fetchChipotles = (center) => {
             fetch(`http://localhost:8080/givechipotles?lat=${center.lat}&long=${center.lng}`)
                 .then(response => response.json())
@@ -25,7 +26,7 @@ export default function Map() {
                     //     //leaflet.marker([userPosition.latitude, userPosition.longitude]).addTo(mapRef.current).bindPopup("Chipotle Information")
                     //     chipotles.push(item)
                     // })
-                    setPositionArray(data)
+                    setData(data)
                 })
                 .catch(error => {
                     console.error('Error fetching map data:', error);
@@ -61,22 +62,24 @@ export default function Map() {
     //     }
 
     //     positionMarkerRef = leaflet.marker([])
-    // }, [positionArray])
+    // }, [data])
 
     //OK WERE HANDLING MARKER ARRAY CHANGES HERE
     useEffect(() => {
-        //if(!mapRef.current) return;
-
+        //convert bytes to json 
+        // const jsonString = decoder.decode(byteArray);
+        // const jsonObject = JSON
         //check the list of new markers to add the new ones
         //this is how react likes to iterate(fr this is so weird)
-        positionArray.forEach((pos) => {
-            const {id, latitude, longitude} = pos;
-            console.log(pos)
+        data.forEach((pos) => {
+            const {id, menu, latitude, longitude} = pos;
+
             if (!positionMarkerRefs.current[id]) {
-                // console.log({latitude, longitude})
+                console.log({latitude, longitude})
                 const marker = leaflet.marker([latitude, longitude])
                     .addTo(mapRef.current)
-                    .bindPopup("Chipotle Please Add Tofu");
+                    //DOM element. Either full component or rendered via a js function(seems easier for this case)
+                    .bindPopup(<></>);
 
                 positionMarkerRefs.current[id] = marker;
             }
@@ -84,12 +87,12 @@ export default function Map() {
 
         //check the existing list to remove old ones
         Object.keys(positionMarkerRefs.current).forEach(id => {
-            if (!positionArray.find((p) => p.id == id)) {
+            if (!data.find((p) => p.id == id)) {
                 mapRef.current.removeLayer(positionMarkerRefs.current[id]);
                 delete positionMarkerRefs.current[id];
             }
         })
-    }, [positionArray]);
+    }, [data]);
 
     return  <div id="map" ref ={mapRef} ></div>;
 
