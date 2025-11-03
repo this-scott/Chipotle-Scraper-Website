@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import leaflet from "leaflet";
+import '../assets/markerformat.css';
 
 export default function Map() {
     //this creates the map as a DOM element
     const mapRef = useRef();
-    const positionMarkerRefs = useRef({})
-
+    const positionMarkerRefs = useRef({});
+    const chipGroupRef = useRef();
     const [data, setData] = useState([]);
 
-    const decoder = new TextDecoder('utf-8');
-
+    
     //This says the map exists even if it isn't rendered yet
     useEffect(() => {
         const fetchChipotles = (center) => {
@@ -34,6 +34,8 @@ export default function Map() {
         }
         mapRef.current = leaflet.map('map').setView([37, -98.5795], 5);
 
+        chipGroupRef.current = leaflet.layerGroup().addTo(mapRef.current);
+
         leaflet.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -50,6 +52,9 @@ export default function Map() {
         mapRef.current.on('zoomend', () => {
             if (mapRef.current.getZoom() >= 10) {
                 fetchChipotles(mapRef.current.getCenter());
+            } else {
+                chipGroupRef.current.clearLayers();
+                positionMarkerRefs.current = {};                
             }
           });
 
@@ -73,13 +78,56 @@ export default function Map() {
         //this is how react likes to iterate(fr this is so weird)
         data.forEach((pos) => {
             const {id, menu, latitude, longitude} = pos;
-
             if (!positionMarkerRefs.current[id]) {
-                console.log({latitude, longitude})
+                //console.log({latitude, longitude})
+                //render menu right here
+                // Create the grid container
+                const newdiv = document.createElement('div');
+                newdiv.classList.add('grid-container');
+                
+                let added = Set(['CHICKEN', 'STEAK', 'BEEF BARBACOA', 'CARNITAS', 'SOFRITAS', 'VEGGIE', 'CHIPS', ]);
+                //add popular elements first(meats and mexican coke)
+                const items = ['CHICKEN', 'STEAK', 'BEEF BARBACOA', 'CARNITAS', 'SOFRITAS', 'VEGGIE']
+
+                // Create and append grid items
+                Object.entries(menu).forEach(([key, value]) => {
+                    console.log(key,value);
+                    const gridItem = document.createElement('div');
+                    gridItem.classList.add('grid-item');
+
+
+                    const img = document.createElement('img');
+                    img.src = item.img;
+                    img.alt = item.title;
+
+                    // Text (title + subtext)
+                    const textContainer = document.createElement('div');
+                    textContainer.classList.add('text-container');
+
+                    const title = document.createElement('h3');
+                    title.textContent = item.title;
+
+                    const subtext = document.createElement('p');
+                    subtext.textContent = item.subtext;
+
+                    textContainer.appendChild(title);
+                    textContainer.appendChild(subtext);
+
+                    // Assemble grid item
+                    gridItem.appendChild(img);
+                    gridItem.appendChild(textContainer);
+
+                    // Add to grid container
+                    newdiv.appendChild(gridItem);
+                });
+
+                //for each element
+                //div.innerHTML = 'Custom content';
+
                 const marker = leaflet.marker([latitude, longitude])
-                    .addTo(mapRef.current)
+                    .addTo(chipGroupRef.current)
                     //DOM element. Either full component or rendered via a js function(seems easier for this case)
-                    .bindPopup(<></>);
+                    .bindPopup(newdiv);
 
                 positionMarkerRefs.current[id] = marker;
             }
